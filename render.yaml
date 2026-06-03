@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: oauth2-dummy-endpoint
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: OAUTH_CLIENTS
+        value: demo-client:demo-secret:read write
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ISSUER
+        sync: false
+      - key: TOKEN_TTL
+        value: "3600"
+    healthCheckPath: /healthz

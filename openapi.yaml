@@ -1,0 +1,336 @@
+openapi: 3.1.0
+info:
+  title: OAuth 2.0 Dummy Endpoint
+  version: 1.0.0
+  description: |
+    Minimal OAuth 2.0 authorization server for demos and integration testing.
+    Implements the Client Credentials grant (RFC 6749 §4.4) and issues signed
+    JWT access tokens (RFC 9068). Also supports introspection (RFC 7662) and
+    revocation (RFC 7009).
+  license:
+    name: MIT
+servers:
+  - url: https://oauth2-dummy.onrender.com
+    description: render.com deployment (replace with your service URL)
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: OAuth
+    description: OAuth 2.0 endpoints
+  - name: Discovery
+    description: Server metadata
+  - name: Ops
+    description: Health & docs
+
+paths:
+  /oauth/token:
+    post:
+      tags: [OAuth]
+      summary: Issue an access token
+      description: |
+        Exchange client credentials for a JWT access token via the
+        `client_credentials` grant. Credentials may be sent as HTTP Basic
+        auth (RFC 6749 §2.3.1) or in the request body.
+      security:
+        - clientBasic: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            examples:
+              clientCredentials:
+                summary: Client credentials grant
+                value:
+                  grant_type: client_credentials
+                  scope: read write
+      responses:
+        '200':
+          description: Access token issued
+          headers:
+            Cache-Control:
+              schema: { type: string, example: no-store }
+            Pragma:
+              schema: { type: string, example: no-cache }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              examples:
+                ok:
+                  value:
+                    access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6ImF0K2p3dCJ9...
+                    token_type: Bearer
+                    expires_in: 3600
+                    scope: read write
+        '400':
+          $ref: '#/components/responses/OAuthError'
+        '401':
+          $ref: '#/components/responses/OAuthError'
+
+  /oauth/introspect:
+    post:
+      tags: [OAuth]
+      summary: Introspect an access token (RFC 7662)
+      security:
+        - clientBasic: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: The access token to introspect
+                token_type_hint:
+                  type: string
+                  enum: [access_token]
+                client_id: { type: string }
+                client_secret: { type: string }
+      responses:
+        '200':
+          description: Introspection result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntrospectionResponse'
+              examples:
+                active:
+                  value:
+                    active: true
+                    client_id: demo-client
+                    scope: read write
+                    token_type: Bearer
+                    exp: 1717440000
+                    iat: 1717436400
+                    sub: demo-client
+                    aud: https://oauth2-dummy.onrender.com
+                    iss: https://oauth2-dummy.onrender.com
+                    jti: 6f2a...
+                inactive:
+                  value:
+                    active: false
+        '401':
+          $ref: '#/components/responses/OAuthError'
+
+  /oauth/revoke:
+    post:
+      tags: [OAuth]
+      summary: Revoke an access token (RFC 7009)
+      security:
+        - clientBasic: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+                token_type_hint:
+                  type: string
+                  enum: [access_token]
+      responses:
+        '200':
+          description: Token revoked (always 200 per RFC 7009, even for unknown tokens)
+        '401':
+          $ref: '#/components/responses/OAuthError'
+
+  /oauth/userinfo:
+    get:
+      tags: [OAuth]
+      summary: Return claims for the bearer token
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Token claims
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+              examples:
+                ok:
+                  value:
+                    sub: demo-client
+                    client_id: demo-client
+                    scope: read write
+                    iss: https://oauth2-dummy.onrender.com
+                    aud: https://oauth2-dummy.onrender.com
+                    exp: 1717440000
+        '401':
+          $ref: '#/components/responses/OAuthError'
+
+  /.well-known/oauth-authorization-server:
+    get:
+      tags: [Discovery]
+      summary: Authorization server metadata (RFC 8414)
+      responses:
+        '200':
+          description: Metadata document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationServerMetadata'
+
+  /healthz:
+    get:
+      tags: [Ops]
+      summary: Liveness probe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /docs:
+    get:
+      tags: [Ops]
+      summary: Swagger UI for this spec
+      responses:
+        '200': { description: HTML documentation page }
+
+components:
+  securitySchemes:
+    clientBasic:
+      type: http
+      scheme: basic
+      description: HTTP Basic with `client_id:client_secret`
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    oauth2ClientCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth/token
+          scopes:
+            read: Read access
+            write: Write access
+
+  schemas:
+    TokenRequest:
+      type: object
+      required: [grant_type]
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials]
+        scope:
+          type: string
+          description: Space-delimited list of requested scopes
+          example: read write
+        client_id:
+          type: string
+          description: Required if not using HTTP Basic
+        client_secret:
+          type: string
+          description: Required if not using HTTP Basic
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: Signed JWT (HS256, `typ: at+jwt`)
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Seconds until token expiry
+          example: 3600
+        scope:
+          type: string
+          example: read write
+
+    IntrospectionResponse:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
+        scope: { type: string }
+        client_id: { type: string }
+        token_type: { type: string, example: Bearer }
+        exp: { type: integer, format: int64 }
+        iat: { type: integer, format: int64 }
+        sub: { type: string }
+        aud: { type: string }
+        iss: { type: string }
+        jti: { type: string }
+
+    UserInfo:
+      type: object
+      properties:
+        sub: { type: string }
+        client_id: { type: string }
+        scope: { type: string }
+        iss: { type: string }
+        aud: { type: string }
+        exp: { type: integer, format: int64 }
+
+    AuthorizationServerMetadata:
+      type: object
+      properties:
+        issuer: { type: string, format: uri }
+        token_endpoint: { type: string, format: uri }
+        introspection_endpoint: { type: string, format: uri }
+        userinfo_endpoint: { type: string, format: uri }
+        grant_types_supported:
+          type: array
+          items: { type: string }
+        token_endpoint_auth_methods_supported:
+          type: array
+          items: { type: string }
+        scopes_supported:
+          type: array
+          items: { type: string }
+
+    OAuthError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - invalid_client
+            - invalid_grant
+            - unauthorized_client
+            - unsupported_grant_type
+            - invalid_scope
+            - invalid_token
+            - not_found
+        error_description: { type: string }
+
+  responses:
+    OAuthError:
+      description: OAuth 2.0 error response (RFC 6749 §5.2)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OAuthError'
+          examples:
+            invalidClient:
+              value:
+                error: invalid_client
+                error_description: Invalid client credentials
+            unsupportedGrant:
+              value:
+                error: unsupported_grant_type
+                error_description: Only client_credentials is supported

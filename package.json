@@ -1,0 +1,23 @@
+{
+  "name": "oauth2-dummy-endpoint",
+  "version": "1.0.0",
+  "description": "Minimal OAuth 2.0 (Client Credentials, JWT) dummy authorization server for demo / integration testing.",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "uuid": "^9.0.1",
+    "yamljs": "^0.3.0",
+    "swagger-ui-express": "^5.0.0"
+  },
+  "license": "MIT"
+}
