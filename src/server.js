@@ -8,28 +8,27 @@ const { v4: uuidv4 } = require('uuid');
 const YAML = require('yamljs');
 const swaggerUi = require('swagger-ui-express');
 
+// ---------------------------------------------------------------------------
+// DEMO CONFIG — all values hardcoded. Edit here if you need to change them.
+// render.com sets PORT for you, so we still honor it if present.
+// ---------------------------------------------------------------------------
 const PORT = parseInt(process.env.PORT, 10) || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-me';
-const JWT_ISSUER = process.env.JWT_ISSUER || `http://localhost:${PORT}`;
-const TOKEN_TTL = parseInt(process.env.TOKEN_TTL, 10) || 3600;
+const JWT_SECRET = 'demo-super-secret-do-not-use-in-prod-1234567890';
+const JWT_ISSUER = 'https://oauth2-dummy.onrender.com';
+const TOKEN_TTL = 3600; // seconds
 
-// Parse OAUTH_CLIENTS env: "id:secret:scope1 scope2,id2:secret2:scope"
-function loadClients() {
-  const raw = process.env.OAUTH_CLIENTS || 'demo-client:demo-secret:read write';
-  const clients = {};
-  for (const entry of raw.split(',')) {
-    const trimmed = entry.trim();
-    if (!trimmed) continue;
-    const parts = trimmed.split(':');
-    const id = parts[0];
-    const secret = parts[1] || '';
-    const scope = parts.slice(2).join(':') || '';
-    if (id) clients[id] = { secret, allowedScopes: scope.split(/\s+/).filter(Boolean) };
-  }
-  return clients;
-}
+const CLIENTS = {
+  'demo-client': {
+    secret: 'demo-secret',
+    allowedScopes: ['read', 'write'],
+  },
+  'another-client': {
+    secret: 'another-secret',
+    allowedScopes: ['read'],
+  },
+};
+// ---------------------------------------------------------------------------
 
-const CLIENTS = loadClients();
 const REVOKED = new Set(); // jti set, in-memory only
 
 const app = express();
@@ -83,8 +82,7 @@ function authenticateClient(req, res) {
 function filterScopes(requested, allowed) {
   if (!requested) return allowed;
   const req = requested.split(/\s+/).filter(Boolean);
-  const ok = req.filter((s) => allowed.includes(s));
-  return ok;
+  return req.filter((s) => allowed.includes(s));
 }
 
 // ---------- discovery ----------
@@ -249,5 +247,5 @@ app.use((req, res) => oauthError(res, 404, 'not_found', `No route for ${req.meth
 
 app.listen(PORT, () => {
   console.log(`oauth2-dummy listening on :${PORT} (issuer=${JWT_ISSUER})`);
-  console.log(`clients: ${Object.keys(CLIENTS).join(', ') || '(none)'}`);
+  console.log(`clients: ${Object.keys(CLIENTS).join(', ')}`);
 });
