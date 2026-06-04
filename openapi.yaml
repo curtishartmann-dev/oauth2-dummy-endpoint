@@ -1,17 +1,18 @@
 openapi: 3.0.3
 info:
   title: OAuth 2.0 Dummy Endpoint
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Minimal OAuth 2.0 authorization server for demos and integration testing.
-    Implements the Client Credentials grant (RFC 6749 section 4.4) and issues
-    signed JWT access tokens. Also supports introspection (RFC 7662) and
-    revocation (RFC 7009).
+    Implements the Authorization Code grant (RFC 6749 section 4.1) with PKCE
+    (RFC 7636), the Client Credentials grant (RFC 6749 section 4.4), and the
+    Refresh Token grant (RFC 6749 section 6). Issues signed JWT access tokens.
+    Also supports introspection (RFC 7662) and revocation (RFC 7009).
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
 servers:
-  - url: https://oauth2-dummy.onrender.com
+  - url: https://oauth2-dummy-endpoint.onrender.com
     description: render.com deployment (replace with your service URL)
   - url: http://localhost:3000
     description: Local development
@@ -23,16 +24,95 @@ tags:
   - name: Ops
     description: Health and documentation
 paths:
+  /oauth/authorize:
+    get:
+      tags:
+        - OAuth
+      summary: Authorization endpoint (RFC 6749 section 4.1.1)
+      operationId: authorize
+      description: |
+        Starts the Authorization Code flow. The browser-facing endpoint that
+        renders a consent screen and, on approval, redirects back to the
+        client with an authorization code.
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - code
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          example: demo-client
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          example: http://localhost:3000/callback
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+          example: read write
+        - name: state
+          in: query
+          required: false
+          description: Opaque value for CSRF protection; echoed back on redirect.
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          required: false
+          description: PKCE code challenge (RFC 7636).
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - plain
+              - S256
+      responses:
+        '200':
+          description: Consent HTML page rendered to the end user.
+          content:
+            text/html:
+              schema:
+                type: string
+        '302':
+          description: |
+            Redirect back to redirect_uri with either ?code=...&state=... on
+            approval, or ?error=access_denied&state=... on denial.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '400':
+          description: Invalid request (unknown client or redirect_uri mismatch).
+          content:
+            text/html:
+              schema:
+                type: string
   /oauth/token:
     post:
       tags:
         - OAuth
-      summary: Issue an access token
+      summary: Token endpoint
       operationId: issueToken
       description: |
-        Exchange client credentials for a JWT access token via the
-        client_credentials grant. Credentials may be sent as HTTP Basic
-        auth (RFC 6749 section 2.3.1) or as form fields.
+        Exchanges credentials for an access token. Supports grant types
+        `authorization_code`, `client_credentials`, and `refresh_token`.
+        Client credentials may be sent as HTTP Basic or as form fields.
       security:
         - clientBasic: []
       requestBody:
@@ -43,19 +123,19 @@ paths:
               $ref: '#/components/schemas/TokenRequest'
       responses:
         '200':
-          description: Access token issued
+          description: Access token issued.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
         '400':
-          description: Invalid request
+          description: Invalid request or grant.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAuthError'
         '401':
-          description: Invalid client credentials
+          description: Invalid client credentials.
           content:
             application/json:
               schema:
@@ -91,7 +171,7 @@ paths:
     post:
       tags:
         - OAuth
-      summary: Revoke an access token (RFC 7009)
+      summary: Revoke an access or refresh token (RFC 7009)
       operationId: revokeToken
       security:
         - clientBasic: []
@@ -168,12 +248,26 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: JWT access token issued by /oauth/token.
+    oauth2AuthorizationCode:
+      type: oauth2
+      description: OAuth 2.0 Authorization Code flow (PKCE supported).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://oauth2-dummy-endpoint.onrender.com/oauth/authorize
+          tokenUrl: https://oauth2-dummy-endpoint.onrender.com/oauth/token
+          refreshUrl: https://oauth2-dummy-endpoint.onrender.com/oauth/token
+          scopes:
+            read: Read access
+            write: Write access
+            openid: OpenID Connect subject identifier
+            profile: Basic profile info
+            email: Email address
     oauth2ClientCredentials:
       type: oauth2
       description: OAuth 2.0 Client Credentials flow.
       flows:
         clientCredentials:
-          tokenUrl: https://oauth2-dummy.onrender.com/oauth/token
+          tokenUrl: https://oauth2-dummy-endpoint.onrender.com/oauth/token
           scopes:
             read: Read access
             write: Write access
@@ -186,11 +280,26 @@ components:
         grant_type:
           type: string
           enum:
+            - authorization_code
             - client_credentials
-          example: client_credentials
+            - refresh_token
+          example: authorization_code
+        code:
+          type: string
+          description: Required when grant_type=authorization_code. The code from /oauth/authorize.
+        redirect_uri:
+          type: string
+          format: uri
+          description: Required when grant_type=authorization_code. Must match the value used at /oauth/authorize.
+        code_verifier:
+          type: string
+          description: PKCE verifier. Required if a code_challenge was sent to /oauth/authorize.
+        refresh_token:
+          type: string
+          description: Required when grant_type=refresh_token.
         scope:
           type: string
-          description: Space-delimited list of requested scopes.
+          description: Space-delimited list of scopes.
           example: read write
         client_id:
           type: string
@@ -198,7 +307,7 @@ components:
           example: demo-client
         client_secret:
           type: string
-          description: Required if not using HTTP Basic auth.
+          description: Required if not using HTTP Basic auth (confidential clients).
           example: demo-secret
     TokenResponse:
       type: object
@@ -210,7 +319,7 @@ components:
         access_token:
           type: string
           description: Signed JWT (HS256).
-          example: eyJhbGciOiJIUzI1NiIsInR5cCI6ImF0K2p3dCJ9.eyJzdWIiOiJkZW1vLWNsaWVudCJ9.signature
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6ImF0K2p3dCJ9.eyJzdWIiOiJkZW1vLXVzZXItMDAxIn0.signature
         token_type:
           type: string
           enum:
@@ -219,8 +328,12 @@ components:
         expires_in:
           type: integer
           format: int32
-          description: Seconds until token expiry.
+          description: Seconds until access token expiry.
           example: 3600
+        refresh_token:
+          type: string
+          description: Returned only for authorization_code grant.
+          example: aBcDeF1234567890_refreshTokenValue
         scope:
           type: string
           example: read write
@@ -231,11 +344,11 @@ components:
       properties:
         token:
           type: string
-          description: The access token to introspect.
         token_type_hint:
           type: string
           enum:
             - access_token
+            - refresh_token
         client_id:
           type: string
         client_secret:
@@ -267,13 +380,13 @@ components:
           example: 1717436400
         sub:
           type: string
-          example: demo-client
+          example: demo-user-001
         aud:
           type: string
-          example: https://oauth2-dummy.onrender.com
+          example: https://oauth2-dummy-endpoint.onrender.com
         iss:
           type: string
-          example: https://oauth2-dummy.onrender.com
+          example: https://oauth2-dummy-endpoint.onrender.com
         jti:
           type: string
           example: 6f2a3b4c-5d6e-7f80-9a0b-1c2d3e4f5a6b
@@ -288,24 +401,32 @@ components:
           type: string
           enum:
             - access_token
+            - refresh_token
     UserInfo:
       type: object
       properties:
         sub:
           type: string
-          example: demo-client
+          example: demo-user-001
         client_id:
           type: string
           example: demo-client
         scope:
           type: string
           example: read write
+        email:
+          type: string
+          format: email
+          example: demo-user@example.com
+        name:
+          type: string
+          example: Demo User
         iss:
           type: string
-          example: https://oauth2-dummy.onrender.com
+          example: https://oauth2-dummy-endpoint.onrender.com
         aud:
           type: string
-          example: https://oauth2-dummy.onrender.com
+          example: https://oauth2-dummy-endpoint.onrender.com
         exp:
           type: integer
           format: int64
@@ -316,10 +437,16 @@ components:
         issuer:
           type: string
           format: uri
+        authorization_endpoint:
+          type: string
+          format: uri
         token_endpoint:
           type: string
           format: uri
         introspection_endpoint:
+          type: string
+          format: uri
+        revocation_endpoint:
           type: string
           format: uri
         userinfo_endpoint:
@@ -329,11 +456,15 @@ components:
           type: array
           items:
             type: string
+        response_types_supported:
+          type: array
+          items:
+            type: string
         token_endpoint_auth_methods_supported:
           type: array
           items:
             type: string
-        response_types_supported:
+        code_challenge_methods_supported:
           type: array
           items:
             type: string
@@ -369,8 +500,9 @@ components:
             - unsupported_grant_type
             - invalid_scope
             - invalid_token
+            - access_denied
             - not_found
-          example: invalid_client
+          example: invalid_grant
         error_description:
           type: string
-          example: Invalid client credentials
+          example: Unknown or used code

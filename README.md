@@ -42,7 +42,7 @@ curl -X POST http://localhost:3000/oauth/introspect \
 
 1. Push this repo to GitHub.
 2. In render.com, **New → Blueprint**, point at the repo. `render.yaml` is auto-detected.
-3. After deploy, set `JWT_ISSUER` to the public URL (e.g. `https://oauth2-dummy.onrender.com`).
+3. After deploy, set `JWT_ISSUER` to the public URL (e.g. `https://oauth2-dummy-endpoint.onrender.com`).
 4. Test: `curl -X POST https://<your-service>.onrender.com/oauth/token -u demo-client:demo-secret -d grant_type=client_credentials`
 
 ## Configuration
