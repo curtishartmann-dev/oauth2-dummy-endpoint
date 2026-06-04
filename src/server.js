@@ -33,6 +33,11 @@ const CLIENTS = {
     secret: 'demo-secret',
     allowedScopes: ['read', 'write', 'openid', 'profile', 'email'],
     redirectUris: [
+      // RingCentral Token Manager callbacks
+      'https://tokenmanager-dca14.ringcentral.com/token-manager/v2/oauth2callback',
+      'https://tokenmanager-dca14-spare.ringcentral.com/token-manager/v2/oauth2callback',
+      'https://tokenmanager-aws76.ringcentral.com/token-manager/v2/oauth2callback',
+      // Common testing tools
       'https://oauth.pstmn.io/v1/callback',           // Postman
       'https://oauth.pstmn.io/v1/browser-callback',   // Postman browser
       'http://localhost:3000/callback',
